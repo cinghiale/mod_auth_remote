@@ -212,6 +212,7 @@ static authn_status do_remote_auth(request_rec *r, const char *user, const char 
 {
   int rz;
   char *user_pass, *b64_user_pass, *req;
+  const char *req_host;
   unsigned char *rbuf;
   apr_status_t rv;
   void *ctx;
@@ -235,8 +236,18 @@ static authn_status do_remote_auth(request_rec *r, const char *user, const char 
   apr_base64_encode(b64_user_pass, user_pass, strlen(user_pass));
 
   /* the http request for the remote end */
-  req = apr_psprintf(r->pool, "HEAD %s HTTP/1.0%sAuthorization: Basic %s%s%s", conf->remote_path, 
-                     CRLF, b64_user_pass, CRLF, CRLF);
+  /* if the backend is an apache server it sends an 301 "Moved Permanently" if
+   * the host header include the default port:
+   *
+   * www.example.com:80 (301)-> www.example.com
+   */
+  if(conf->remote_port == 80)
+	  req_host = conf->remote_server;
+  else
+	  req_host = (const char*) apr_psprintf(r->pool, "%s:%d", conf->remote_server, conf->remote_port);
+	  req_host = (const char*) apr_psprintf(r->pool, "%s:%d", conf->remote_server, conf->remote_port);
+  req = apr_psprintf(r->pool, "HEAD %s HTTP/1.1%sHost: %s%sAuthorization: Basic %s%s%s", conf->remote_path, 
+                     CRLF, req_host, CRLF, b64_user_pass, CRLF, CRLF);
 
   /* send the request to the remote server */
   rv = conf->io->connect(conf->remote_server, conf->remote_port, ctx);
